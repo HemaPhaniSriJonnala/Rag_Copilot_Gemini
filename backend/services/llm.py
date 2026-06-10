@@ -14,7 +14,7 @@ from google.genai import types
 
 from services.retriever import RetrievedChunk
 
-MODEL = "gemini-2.5-flash"   # best free model as of June 2026
+MODEL = "gemini-2.5-flash"  # best free model as of June 2026
 
 SYSTEM_BASE = """You are RAG Copilot, an AI assistant that answers questions \
 grounded in documents provided by the user.
@@ -119,12 +119,14 @@ class LLMService:
         )
 
         # Stream tokens
-        for chunk in self.client.models.generate_content_stream(
-            model=MODEL,
-            contents=contents,
-            config=config,
-        ):
-            if chunk.text:
-                yield f"data: {json.dumps({'type': 'token', 'text': chunk.text})}\n\n"
+        try:
+            for chunk in self.client.models.generate_content_stream(
+                model=MODEL,
+                contents=contents,
+                config=config,
+                ):
+                if chunk.text:
+                    yield f"data: {json.dumps({'type': 'token', 'text': chunk.text})}\n\n"
 
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'token', 'text': f'Error: {str(e)}'})}\n\n"

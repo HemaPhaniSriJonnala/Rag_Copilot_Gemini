@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 from dataclasses import dataclass
 from services.document_store import DocumentStore
 
+
 @dataclass
 class RetrievedChunk:
     doc_id: str
@@ -32,6 +33,16 @@ class ChromaRetriever:
     def index_documents(self):
         chunks = self.store.get_chunks()
 
+        # Clear entire collection first
+        try:
+            self.client.delete_collection("documents")
+        except:
+            pass
+
+        self.collection = self.client.get_or_create_collection(
+            name="documents"
+        )
+
         if not chunks:
             return
 
@@ -50,11 +61,6 @@ class ChromaRetriever:
             }
             for c in chunks
         ]
-
-        try:
-            self.collection.delete(ids=ids)
-        except:
-            pass
 
         self.collection.add(
             ids=ids,

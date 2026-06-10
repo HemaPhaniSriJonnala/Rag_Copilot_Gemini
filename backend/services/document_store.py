@@ -7,6 +7,26 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
+from pypdf import PdfReader
+import io
+from docx import Document as DocxDocument
+
+def extract_text(filename: str, content: bytes) -> str:
+    if filename.endswith(".pdf"):
+        reader = PdfReader(io.BytesIO(content))
+        return "\n".join(p.extract_text() or "" for p in reader.pages)
+    if filename.endswith(".docx"):
+        return extract_docx(content)
+    return content.decode("utf-8", errors="ignore")
+
+
+def extract_docx(content: bytes) -> str:
+    doc = DocxDocument(io.BytesIO(content))
+    parts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            parts.append(" | ".join(c.text for c in row.cells))
+    return "\n".join(p for p in parts if p.strip())
 
 
 CHUNK_SIZE = 400     # words per chunk

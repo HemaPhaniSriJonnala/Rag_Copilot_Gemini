@@ -7,6 +7,8 @@ Free tier: gemini-2.5-flash via Google AI Studio key (no credit card).
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pypdf import PdfReader
+import io
 from dotenv import load_dotenv
 
 load_dotenv()   # load GEMINI_API_KEY from .env before importing LLMService
@@ -46,10 +48,36 @@ def list_docs():
 @app.post("/api/docs/upload", response_model=DocumentResponse)
 async def upload_file(file: UploadFile = File(...)):
     content = await file.read()
-    try:
-        text = content.decode("utf-8", errors="replace")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Could not decode file as text")
+    print("=" * 50)
+    print("PDF detected:", file.filename.lower().endswith(".pdf"))
+    print("Filename:", file.filename)
+    if file.filename.lower().endswith(".pdf"):
+        try:
+            reader = PdfReader(io.BytesIO(content))
+            text = "\n".join(
+                page.extract_text() or ""
+                for page in reader.pages
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read PDF: {str(e)}"
+                )
+    else:
+        try:
+            text = content.decode("utf-8", errors="replace")
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not decode file as text"
+                )
+        
+    print("Uploaded:", file.filename)
+    print("Text length:", len(text))
+    print("First 500 chars:")
+    print(text[:500])
+    print("=" * 50)
+
     doc = doc_store.add_document(
         name=file.filename,
         content=text

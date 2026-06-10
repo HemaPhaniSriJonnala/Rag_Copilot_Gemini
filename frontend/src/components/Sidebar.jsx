@@ -3,7 +3,13 @@ import { Upload, FileText, Trash2, Plus, Circle } from 'lucide-react'
 import styles from './Sidebar.module.css'
 
 const FILE_ICONS = {
-  md: '📝', json: '🗂️', csv: '📊', html: '🌐', txt: '📄',
+  md: '📝',
+  json: '🗂️',
+  csv: '📊',
+  html: '🌐',
+  txt: '📄',
+  pdf: '📕',
+  docx: '📘',
 }
 function fileIcon(name = '') {
   const ext = name.split('.').pop().toLowerCase()
@@ -59,13 +65,13 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
             ref={fileRef}
             type="file"
             multiple
-            accept=".txt,.md,.csv,.json,.html"
+            accept=".txt,.md,.csv,.json,.html,.pdf,.docx"
             style={{ display: 'none' }}
             onChange={e => { handleFiles(e.target.files); e.target.value = '' }}
           />
           <Upload size={20} className={styles.uploadIcon} />
           <div className={styles.uploadTitle}>Drop files or click to browse</div>
-          <div className={styles.uploadSub}>.txt · .md · .csv · .json · .html</div>
+          <div className={styles.uploadSub}>.txt · .md · .csv · .json · .html · .pdf · .docx</div>
         </div>
 
         {/* Snippet toggle */}

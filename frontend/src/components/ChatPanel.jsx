@@ -27,10 +27,24 @@ function SourcesBlock({ sources }) {
       <div className={styles.sourcesLabel}><FileSearch size={11} /> Retrieved Sources</div>
       {sources.map((s, i) => (
         <div key={i} className={styles.sourceRow}>
-          <span className={styles.sourceDoc}>📄 {s.doc_name}</span>
-          <span className={styles.sourceChunk}>chunk {s.chunk_index + 1}</span>
-          <span className={styles.sourceScore}>{Math.round(s.score * 100)}%</span>
-        </div>
+          <div>
+            <span className={styles.sourceDoc}>
+              📄 {s.doc_name}
+              </span>
+            <span className={styles.sourceChunk}>
+                chunk {s.chunk_index + 1}
+              </span>
+            <span className={styles.sourceScore}>
+              {Math.round(s.score * 100)}% match
+              </span>
+          </div>
+
+  {s.preview && (
+  <p className={styles.sourcePreview}>
+    {s.preview}
+  </p>
+)}
+</div>
       ))}
     </div>
   )
