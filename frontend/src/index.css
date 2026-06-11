@@ -1,33 +1,45 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #070B14;
-  --bg2:      #0D1526;
-  --bg3:      #111827;
+  --bg:       #080C15;
+  --bg2:      #0C1220;
+  --bg3:      #101828;
   --surface:  rgba(255,255,255,0.04);
-  --surface2: rgba(255,255,255,0.08);
-  --border:   rgba(255,255,255,0.09);
-  --border2:  rgba(124,58,237,0.4);
+  --surface2: rgba(255,255,255,0.07);
+  --surface3: rgba(255,255,255,0.11);
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(124,58,237,0.35);
 
   --violet:       #7C3AED;
   --violet-dim:   #6D28D9;
   --violet-light: #A78BFA;
+  --violet-glow:  rgba(124,58,237,0.25);
+  --blue:         #3B82F6;
   --cyan:         #06B6D4;
   --cyan-light:   #67E8F9;
   --green:        #10B981;
   --green-light:  #34D399;
   --red:          #EF4444;
+  --amber:        #F59E0B;
 
   --text:  #F1F5F9;
   --text2: #94A3B8;
   --text3: #475569;
+  --text4: #2D3748;
 
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-violet: 0 0 20px rgba(124,58,237,0.3);
 }
 
 html, body, #root {
@@ -38,18 +50,21 @@ html, body, #root {
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
-button { cursor: pointer; font-family: var(--font-sans); }
+button { cursor: pointer; font-family: var(--font-sans); border: none; outline: none; }
 input, textarea { font-family: var(--font-sans); }
+a { color: inherit; text-decoration: none; }
 
 /* Markdown rendered inside chat */
 .md-content h1, .md-content h2, .md-content h3 {
-  margin: 12px 0 6px;
+  margin: 14px 0 6px;
   font-weight: 600;
   color: var(--text);
 }
@@ -63,39 +78,54 @@ input, textarea { font-family: var(--font-sans); }
   font-family: var(--font-mono);
   font-size: 12px;
   background: rgba(255,255,255,0.08);
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 4px;
   color: var(--cyan-light);
 }
 .md-content pre {
-  background: rgba(0,0,0,0.35);
+  background: rgba(0,0,0,0.4);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 14px 16px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 10px 0;
 }
 .md-content pre code { background: none; padding: 0; color: var(--text); }
 .md-content blockquote {
   border-left: 3px solid var(--violet);
-  padding-left: 12px;
+  padding-left: 14px;
   color: var(--text2);
-  margin: 8px 0;
+  margin: 10px 0;
+  font-style: italic;
 }
 .md-content strong { color: var(--text); font-weight: 600; }
 .md-content a { color: var(--cyan-light); text-decoration: underline; }
-.md-content table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.md-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
 .md-content th, .md-content td {
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-size: 12px;
 }
 .md-content th { background: var(--surface2); font-weight: 600; }
+.md-content hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
 @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.35} }
 @keyframes spin   { to { transform: rotate(360deg); } }
-@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeInScale { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
 @keyframes bounce {
   0%,60%,100% { transform: translateY(0); }
   30%          { transform: translateY(-5px); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes voicePulse {
+  0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+}
+@keyframes waveBar {
+  0%,100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
 }

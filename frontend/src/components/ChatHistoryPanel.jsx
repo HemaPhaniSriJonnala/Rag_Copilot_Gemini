@@ -1,12 +1,10 @@
 /**
- * ChatHistoryPanel.jsx  ─  frontend/src/components/ChatHistoryPanel.jsx
- *
- * FIX: New Chat button now awaits onNewChat() before reloading sessions,
- *      so the new (empty) session is reflected in the list correctly.
- *      Also: reloads session list after returning from newChat.
+ * ChatHistoryPanel.jsx — Left sidebar chat history
+ * New Chat button + recent sessions list
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { Plus, MessageSquare, Trash2, Clock } from 'lucide-react'
 import styles from './ChatHistoryPanel.module.css'
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
@@ -19,12 +17,19 @@ function timeAgo(ts) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+function getTitle(preview) {
+  if (!preview || preview === '…') return 'New conversation'
+  const t = preview.slice(0, 40)
+  return t.length < preview.length ? t + '…' : t
+}
+
 export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSession }) {
   const [sessions, setSessions]     = useState([])
   const [previews, setPreviews]     = useState({})
   const [loading, setLoading]       = useState(false)
   const [activeId, setActiveId]     = useState(currentSessionId)
   const [deletingId, setDeletingId] = useState(null)
+  const [hoverId, setHoverId]       = useState(null)
 
   useEffect(() => { setActiveId(currentSessionId) }, [currentSessionId])
 
@@ -36,6 +41,7 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
       const data = await res.json()
       setSessions(data)
 
+      // Only fetch previews for sessions we don't already have
       const map = {}
       await Promise.all(data.map(async s => {
         try {
@@ -46,7 +52,8 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
           map[s.session_id] = first?.content ?? '…'
         } catch { map[s.session_id] = '…' }
       }))
-      setPreviews(map)
+      // Merge: keep old previews, overwrite with fresh ones
+      setPreviews(prev => ({ ...prev, ...map }))
     } catch (err) {
       console.error('Failed to load history:', err)
     } finally {
@@ -68,15 +75,16 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
     }
   }
 
-  const handleDelete = async (e, sessionId) => {
+  const handleDelete = async (e, sid) => {
     e.stopPropagation()
-    setDeletingId(sessionId)
+    setDeletingId(sid)
     try {
-      await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' })
-      setSessions(prev => prev.filter(s => s.session_id !== sessionId))
-      if (activeId === sessionId) {
-        await onNewChat()
+      await fetch(`${BASE}/api/history/${sid}`, { method: 'DELETE' })
+      setSessions(prev => prev.filter(s => s.session_id !== sid))
+      setPreviews(prev => { const n = { ...prev }; delete n[sid]; return n })
+      if (activeId === sid) {
         setActiveId(null)
+        await onNewChat()
       }
     } catch (err) {
       console.error('Failed to delete session:', err)
@@ -85,26 +93,35 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
     }
   }
 
-  // ✅ FIX: await onNewChat(), then reload sessions list
   const handleNewChat = async () => {
-    await onNewChat()
+    await onNewChat()   // rotates session id locally, does NOT delete from server
     setActiveId(null)
-    // slight delay so backend has time to process the delete
-    setTimeout(loadSessions, 200)
+    setTimeout(() => loadSessions(), 400)   // reload after backend persists last msgs
   }
 
   return (
     <div className={styles.panel}>
       <button className={styles.newChatBtn} onClick={handleNewChat}>
-        <span className={styles.plusIcon}>＋</span>
-        New Chat
+        <Plus size={16} strokeWidth={2.5} />
+        <span>New Chat</span>
       </button>
 
-      <div className={styles.sectionLabel}>Recent Chats</div>
+      <div className={styles.sectionLabel}>
+        <Clock size={11} />
+        Recent
+      </div>
 
-      {loading && <p className={styles.hint}>Loading…</p>}
+      {loading && (
+        <div className={styles.loadingRows}>
+          {[1,2,3].map(i => <div key={i} className={styles.loadingRow} />)}
+        </div>
+      )}
+
       {!loading && sessions.length === 0 && (
-        <p className={styles.hint}>No previous chats yet.</p>
+        <div className={styles.emptyHint}>
+          <MessageSquare size={20} opacity={0.3} />
+          <span>No chats yet</span>
+        </div>
       )}
 
       <ul className={styles.list}>
@@ -113,23 +130,32 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
             key={s.session_id}
             className={`${styles.item} ${activeId === s.session_id ? styles.active : ''}`}
             onClick={() => handleSelect(s.session_id)}
+            onMouseEnter={() => setHoverId(s.session_id)}
+            onMouseLeave={() => setHoverId(null)}
           >
-            <div className={styles.preview}>
-              {(previews[s.session_id] ?? '…').slice(0, 52)}
-              {(previews[s.session_id] ?? '').length > 52 ? '…' : ''}
+            <div className={styles.itemIcon}>
+              <MessageSquare size={13} />
             </div>
-            <div className={styles.meta}>
-              <span className={styles.time}>{timeAgo(s.last_active)}</span>
-              <span className={styles.msgCount}>{s.message_count} msgs</span>
+            <div className={styles.itemContent}>
+              <div className={styles.itemTitle}>
+                {getTitle(previews[s.session_id])}
+              </div>
+              <div className={styles.itemMeta}>
+                <span>{timeAgo(s.last_active)}</span>
+                <span className={styles.dot}>·</span>
+                <span>{s.message_count} msgs</span>
+              </div>
+            </div>
+            {(hoverId === s.session_id || activeId === s.session_id) && (
               <button
                 className={styles.deleteBtn}
                 onClick={e => handleDelete(e, s.session_id)}
                 disabled={deletingId === s.session_id}
-                title="Delete this chat"
+                title="Delete chat"
               >
-                {deletingId === s.session_id ? '…' : '×'}
+                <Trash2 size={12} />
               </button>
-            </div>
+            )}
           </li>
         ))}
       </ul>

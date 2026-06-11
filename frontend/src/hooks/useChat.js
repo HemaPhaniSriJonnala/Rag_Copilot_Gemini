@@ -124,17 +124,16 @@ export function useChat() {
     setError(null)
   }, [])
 
-  // ✅ FIX: properly awaits server delete, then updates state
+  // FIX: do NOT delete the old session — we want it to appear in history.
+  // Just rotate to a fresh session id and clear the local message list.
   const newChat = useCallback(async () => {
-    try { await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' }) }
-    catch { /* best-effort */ }
     const newId = makeSessionId()
     sessionStorage.setItem('rag_session_id', newId)
     setSessionId(newId)
     setMessages([])
     setError(null)
-    return newId   // return so callers can chain
-  }, [sessionId])
+    return newId
+  }, [])
 
   const loadSession = useCallback((loadedSessionId, historyMessages) => {
     const converted = historyMessages.map(m => ({
