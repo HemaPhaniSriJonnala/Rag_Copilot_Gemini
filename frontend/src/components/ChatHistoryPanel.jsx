@@ -1,121 +1,101 @@
 /**
- * ChatHistoryPanel.jsx
- * Place at: frontend/src/components/ChatHistoryPanel.jsx
+ * ChatHistoryPanel.jsx  ─  frontend/src/components/ChatHistoryPanel.jsx
  *
- * Shows:
- *  - "New Chat" button at the top
- *  - List of recent sessions with timestamp + first message preview
- *  - Click any session to load it back into the chat
+ * FIX: New Chat button now awaits onNewChat() before reloading sessions,
+ *      so the new (empty) session is reflected in the list correctly.
+ *      Also: reloads session list after returning from newChat.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import styles from "./ChatHistoryPanel.module.css";
+import { useState, useEffect, useCallback } from 'react'
+import styles from './ChatHistoryPanel.module.css'
 
-const BASE = import.meta.env.VITE_API_URL ?? "";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
+const BASE = import.meta.env.VITE_API_URL ?? ''
 
 function timeAgo(ts) {
-  const diff = Date.now() / 1000 - ts;
-  if (diff < 60)        return "just now";
-  if (diff < 3600)      return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400)     return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  const diff = Date.now() / 1000 - ts
+  if (diff < 60)    return 'just now'
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
 }
-
-async function apiGet(path) {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
-}
-
-async function apiDelete(path) {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
-}
-
-// ── component ─────────────────────────────────────────────────────────────────
 
 export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSession }) {
-  const [sessions, setSessions]     = useState([]);
-  const [previews, setPreviews]     = useState({});   // sessionId → first user message
-  const [loading, setLoading]       = useState(false);
-  const [activeId, setActiveId]     = useState(currentSessionId);
-  const [deletingId, setDeletingId] = useState(null);
+  const [sessions, setSessions]     = useState([])
+  const [previews, setPreviews]     = useState({})
+  const [loading, setLoading]       = useState(false)
+  const [activeId, setActiveId]     = useState(currentSessionId)
+  const [deletingId, setDeletingId] = useState(null)
 
-  // load session list
+  useEffect(() => { setActiveId(currentSessionId) }, [currentSessionId])
+
   const loadSessions = useCallback(async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const data = await apiGet("/api/history");           // list_sessions()
-      setSessions(data);
+      const res = await fetch(`${BASE}/api/history`)
+      if (!res.ok) return
+      const data = await res.json()
+      setSessions(data)
 
-      // fetch first message of each session for preview
-      const previewMap = {};
-      await Promise.all(
-        data.map(async (s) => {
-          try {
-            const msgs = await apiGet(`/api/history/${s.session_id}?limit=1`);
-            const first = msgs.find((m) => m.role === "user");
-            previewMap[s.session_id] = first?.content ?? "…";
-          } catch {
-            previewMap[s.session_id] = "…";
-          }
-        })
-      );
-      setPreviews(previewMap);
+      const map = {}
+      await Promise.all(data.map(async s => {
+        try {
+          const r = await fetch(`${BASE}/api/history/${s.session_id}`)
+          if (!r.ok) return
+          const msgs = await r.json()
+          const first = msgs.find(m => m.role === 'user')
+          map[s.session_id] = first?.content ?? '…'
+        } catch { map[s.session_id] = '…' }
+      }))
+      setPreviews(map)
     } catch (err) {
-      console.error("Failed to load history:", err);
+      console.error('Failed to load history:', err)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+  useEffect(() => { loadSessions() }, [loadSessions])
 
-  // sync active marker when parent changes session
-  useEffect(() => {
-    setActiveId(currentSessionId);
-  }, [currentSessionId]);
-
-  // click a session → load its messages
   const handleSelect = async (sessionId) => {
-    setActiveId(sessionId);
+    setActiveId(sessionId)
     try {
-      const msgs = await apiGet(`/api/history/${sessionId}`);
-      onLoadSession(sessionId, msgs);
+      const res = await fetch(`${BASE}/api/history/${sessionId}`)
+      if (!res.ok) return
+      const msgs = await res.json()
+      onLoadSession(sessionId, msgs)
     } catch (err) {
-      console.error("Failed to load session:", err);
+      console.error('Failed to load session:', err)
     }
-  };
+  }
 
-  // delete one session
   const handleDelete = async (e, sessionId) => {
-    e.stopPropagation();
-    setDeletingId(sessionId);
+    e.stopPropagation()
+    setDeletingId(sessionId)
     try {
-      await apiDelete(`/api/history/${sessionId}`);
-      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
-      if (activeId === sessionId) onNewChat();
+      await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' })
+      setSessions(prev => prev.filter(s => s.session_id !== sessionId))
+      if (activeId === sessionId) {
+        await onNewChat()
+        setActiveId(null)
+      }
     } catch (err) {
-      console.error("Failed to delete session:", err);
+      console.error('Failed to delete session:', err)
     } finally {
-      setDeletingId(null);
+      setDeletingId(null)
     }
-  };
+  }
 
-  // ── render ─────────────────────────────────────────────────────────────────
+  // ✅ FIX: await onNewChat(), then reload sessions list
+  const handleNewChat = async () => {
+    await onNewChat()
+    setActiveId(null)
+    // slight delay so backend has time to process the delete
+    setTimeout(loadSessions, 200)
+  }
+
   return (
     <div className={styles.panel}>
-
-      {/* New Chat button */}
-      <button
-        className={styles.newChatBtn}
-        onClick={() => { onNewChat(); setActiveId(null); loadSessions(); }}
-      >
+      <button className={styles.newChatBtn} onClick={handleNewChat}>
         <span className={styles.plusIcon}>＋</span>
         New Chat
       </button>
@@ -123,43 +103,36 @@ export default function ChatHistoryPanel({ currentSessionId, onNewChat, onLoadSe
       <div className={styles.sectionLabel}>Recent Chats</div>
 
       {loading && <p className={styles.hint}>Loading…</p>}
-
       {!loading && sessions.length === 0 && (
         <p className={styles.hint}>No previous chats yet.</p>
       )}
 
       <ul className={styles.list}>
-        {sessions.map((s) => (
+        {sessions.map(s => (
           <li
             key={s.session_id}
-            className={`${styles.item} ${activeId === s.session_id ? styles.active : ""}`}
+            className={`${styles.item} ${activeId === s.session_id ? styles.active : ''}`}
             onClick={() => handleSelect(s.session_id)}
           >
-            {/* preview text */}
             <div className={styles.preview}>
-              {(previews[s.session_id] ?? "…").slice(0, 52)}
-              {(previews[s.session_id] ?? "").length > 52 ? "…" : ""}
+              {(previews[s.session_id] ?? '…').slice(0, 52)}
+              {(previews[s.session_id] ?? '').length > 52 ? '…' : ''}
             </div>
-
-            {/* meta row */}
             <div className={styles.meta}>
               <span className={styles.time}>{timeAgo(s.last_active)}</span>
               <span className={styles.msgCount}>{s.message_count} msgs</span>
-
-              {/* delete button */}
               <button
                 className={styles.deleteBtn}
-                onClick={(e) => handleDelete(e, s.session_id)}
-                title="Delete this chat"
-                aria-label="Delete chat"
+                onClick={e => handleDelete(e, s.session_id)}
                 disabled={deletingId === s.session_id}
+                title="Delete this chat"
               >
-                {deletingId === s.session_id ? "…" : "×"}
+                {deletingId === s.session_id ? '…' : '×'}
               </button>
             </div>
           </li>
         ))}
       </ul>
     </div>
-  );
+  )
 }

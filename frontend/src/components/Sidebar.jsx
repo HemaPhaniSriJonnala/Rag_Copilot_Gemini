@@ -1,36 +1,44 @@
+/**
+ * Sidebar.jsx  ─  frontend/src/components/Sidebar.jsx
+ *
+ * FIX: documents disappearing on second upload.
+ * Root cause: forEach called onUpload(file) for each file separately,
+ * each triggering its own refreshAll() — racing each other.
+ * Fix: collect all files, pass the whole array to onUpload once.
+ * useDocuments.upload() already handles arrays correctly.
+ */
+
 import React, { useRef, useState } from 'react'
-import { Upload, FileText, Trash2, Plus, Circle } from 'lucide-react'
+import { Upload, FileText, Trash2, Plus } from 'lucide-react'
 import styles from './Sidebar.module.css'
 
 const FILE_ICONS = {
-  md: '📝',
-  json: '🗂️',
-  csv: '📊',
-  html: '🌐',
-  txt: '📄',
-  pdf: '📕',
-  docx: '📘',
+  md: '📝', json: '🗂️', csv: '📊',
+  html: '🌐', txt: '📄', pdf: '📕', docx: '📘',
 }
+
 function fileIcon(name = '') {
   const ext = name.split('.').pop().toLowerCase()
   return FILE_ICONS[ext] || '📄'
 }
+
 function timeAgo(iso) {
-  const d = new Date(iso)
-  const diff = Math.floor((Date.now() - d) / 1000)
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`
-  return `${Math.floor(diff/3600)}h ago`
+  const diff = Math.floor((Date.now() - new Date(iso)) / 1000)
+  if (diff < 60)   return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return `${Math.floor(diff / 3600)}h ago`
 }
 
 export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }) {
   const fileRef = useRef()
-  const [snippet, setSnippet] = useState('')
-  const [drag, setDrag] = useState(false)
+  const [snippet, setSnippet]         = useState('')
+  const [drag, setDrag]               = useState(false)
   const [snippetOpen, setSnippetOpen] = useState(false)
 
+  // ✅ FIX: pass all files at once instead of one-by-one
   const handleFiles = (files) => {
-    Array.from(files).forEach(f => onUpload(f))
+    if (!files || files.length === 0) return
+    onUpload(files)   // pass the whole FileList/array
   }
 
   const handleDrop = (e) => {
@@ -53,7 +61,6 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
       <div className={styles.section}>
         <div className={styles.sectionLabel}>Knowledge Base</div>
 
-        {/* Upload zone */}
         <div
           className={`${styles.uploadZone} ${drag ? styles.dragOver : ''}`}
           onDragOver={e => { e.preventDefault(); setDrag(true) }}
@@ -74,11 +81,7 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
           <div className={styles.uploadSub}>.txt · .md · .csv · .json · .html · .pdf · .docx</div>
         </div>
 
-        {/* Snippet toggle */}
-        <button
-          className={styles.snippetToggle}
-          onClick={() => setSnippetOpen(o => !o)}
-        >
+        <button className={styles.snippetToggle} onClick={() => setSnippetOpen(o => !o)}>
           <Plus size={12} />
           {snippetOpen ? 'Cancel' : 'Paste text snippet'}
         </button>
@@ -101,7 +104,6 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
 
       <div className={styles.divider} />
 
-      {/* Docs list */}
       <div className={styles.section} style={{ paddingBottom: 4 }}>
         <div className={styles.sectionLabel}>
           Indexed Documents
@@ -126,11 +128,7 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
                 </div>
               </div>
               <span className={styles.docReady} title="Indexed" />
-              <button
-                className={styles.docDel}
-                onClick={() => onRemove(doc.id)}
-                title="Remove"
-              >
+              <button className={styles.docDel} onClick={() => onRemove(doc.id)} title="Remove">
                 <Trash2 size={12} />
               </button>
             </div>
@@ -145,10 +143,8 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
         </div>
         <div className={styles.footerRow}>
           <span>Retrieval</span>
-          <span className={styles.mono}>
-            Semantic Search
-            </span>
-            </div>
+          <span className={styles.mono}>Semantic Search</span>
+        </div>
       </div>
     </aside>
   )

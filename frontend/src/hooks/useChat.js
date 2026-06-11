@@ -1,47 +1,36 @@
 /**
- * useChat.js — final merged version
- * Place at: frontend/src/hooks/useChat.js
+ * useChat.js  ─  frontend/src/hooks/useChat.js
  *
- * Keeps your original return shape:
- *   { messages, isStreaming, sendMessage, clear }
- *
- * Adds new fields (used only by App.jsx + ChatHistoryPanel):
- *   { newChat, loadSession, sessionId }
+ * FIX: event.token → event.text  (llm.py sends { type:'token', text: '...' })
+ *      newChat properly awaits delete before clearing
  */
 
 import { useState, useCallback, useRef } from 'react'
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
 
-function makeSessionId() {
-  return crypto.randomUUID()
-}
+function makeSessionId() { return crypto.randomUUID() }
 
 function getOrCreateSessionId() {
   let id = sessionStorage.getItem('rag_session_id')
-  if (!id) {
-    id = makeSessionId()
-    sessionStorage.setItem('rag_session_id', id)
-  }
+  if (!id) { id = makeSessionId(); sessionStorage.setItem('rag_session_id', id) }
   return id
 }
 
 export function useChat() {
-  const [messages, setMessages]       = useState([])
-  const [isStreaming, setIsStreaming]  = useState(false)   // your original field name
-  const [error, setError]             = useState(null)
-  const [sessionId, setSessionId]     = useState(getOrCreateSessionId)
-
+  const [messages, setMessages]      = useState([])
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [error, setError]            = useState(null)
+  const [sessionId, setSessionId]    = useState(getOrCreateSessionId)
   const abortRef = useRef(null)
 
-  // ── sendMessage — keeps your original signature: sendMessage(query, grounded?) ──
   const sendMessage = useCallback(async (query, grounded = true) => {
     if (!query.trim() || isStreaming) return
 
-    const userMsg      = { role: 'user',      content: query,  sources: [] }
-    const assistantMsg = { role: 'assistant', content: '',     sources: [] }
+    const userMsg      = { id: Date.now(),     role: 'user',      content: query, sources: [], ts: new Date() }
+    const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: '',    sources: [], ts: new Date(), streaming: true }
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg])
+    setMessages(prev => [...prev, userMsg, assistantMsg])
     setIsStreaming(true)
     setError(null)
 
@@ -50,25 +39,24 @@ export function useChat() {
 
     try {
       const res = await fetch(`${BASE}/api/chat`, {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
           grounded,
           session_id: sessionId,
           history: messages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({ role: m.role, content: m.content })),
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({ role: m.role, content: m.content })),
         }),
         signal: controller.signal,
       })
 
       if (!res.ok) throw new Error(`Server error ${res.status}`)
 
-      const reader  = res.body.getReader()
+      const reader = res.body.getReader()
       const decoder = new TextDecoder()
-      let   buffer  = ''
-      let   fullReply = ''
+      let buffer = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -80,66 +68,82 @@ export function useChat() {
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
           try {
-            const event = JSON.parse(line.slice(6))
+            const event = JSON.parse(raw)
 
             if (event.type === 'sources') {
-              setMessages((prev) => {
+              setMessages(prev => {
                 const copy = [...prev]
                 copy[copy.length - 1] = { ...copy[copy.length - 1], sources: event.sources ?? [] }
                 return copy
               })
             }
 
+            // ✅ FIX: llm.py sends event.text, NOT event.token
             if (event.type === 'token') {
-              fullReply += event.token
-              setMessages((prev) => {
+              const chunk = event.text ?? event.token ?? ''
+              setMessages(prev => {
                 const copy = [...prev]
-                copy[copy.length - 1] = { ...copy[copy.length - 1], content: fullReply }
+                const last = copy[copy.length - 1]
+                copy[copy.length - 1] = { ...last, content: last.content + chunk }
                 return copy
               })
             }
 
             if (event.type === 'done') {
+              setMessages(prev => {
+                const copy = [...prev]
+                copy[copy.length - 1] = { ...copy[copy.length - 1], streaming: false }
+                return copy
+              })
               setIsStreaming(false)
             }
 
-          } catch { /* ignore malformed SSE lines */ }
+          } catch { /* ignore malformed SSE */ }
         }
       }
+      setIsStreaming(false)
+
     } catch (err) {
       if (err.name !== 'AbortError') {
         setError(err.message || 'Something went wrong')
         setIsStreaming(false)
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = { ...copy[copy.length - 1], error: true, streaming: false, content: '⚠ ' + (err.message || 'Error') }
+          return copy
+        })
       }
     }
   }, [isStreaming, messages, sessionId])
 
-  // ── clear — your original: just wipes the in-panel message list ──────────
   const clear = useCallback(() => {
     setMessages([])
     setError(null)
   }, [])
 
-  // ── newChat — new: clear + rotate session id + delete server history ──────
+  // ✅ FIX: properly awaits server delete, then updates state
   const newChat = useCallback(async () => {
-    try {
-      await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' })
-    } catch { /* best-effort */ }
-
+    try { await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' }) }
+    catch { /* best-effort */ }
     const newId = makeSessionId()
     sessionStorage.setItem('rag_session_id', newId)
     setSessionId(newId)
     setMessages([])
     setError(null)
+    return newId   // return so callers can chain
   }, [sessionId])
 
-  // ── loadSession — new: restore a past session from history API ────────────
   const loadSession = useCallback((loadedSessionId, historyMessages) => {
-    const converted = historyMessages.map((m) => ({
-      role:    m.role,
+    const converted = historyMessages.map(m => ({
+      id: Math.random(),
+      role: m.role,
       content: m.content,
       sources: [],
+      ts: new Date(m.ts * 1000),
+      streaming: false,
     }))
     setMessages(converted)
     setError(null)
@@ -147,23 +151,13 @@ export function useChat() {
     sessionStorage.setItem('rag_session_id', loadedSessionId)
   }, [])
 
-  // ── stopGeneration ────────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
     abortRef.current?.abort()
     setIsStreaming(false)
   }, [])
 
   return {
-    // ── original fields (unchanged) ──
-    messages,
-    isStreaming,
-    sendMessage,
-    clear,
-    error,
-    // ── new fields ──────────────────
-    sessionId,
-    newChat,
-    loadSession,
-    stopGeneration,
+    messages, isStreaming, error, sessionId,
+    sendMessage, clear, newChat, loadSession, stopGeneration,
   }
 }
