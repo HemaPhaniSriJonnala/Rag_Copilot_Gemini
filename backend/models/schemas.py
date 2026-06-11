@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     query: str
     history: list[HistoryMessage] = []
     grounded: bool = True
+    session_id: str = "default"
 
 
 class DocumentResponse(BaseModel):

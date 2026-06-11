@@ -145,8 +145,10 @@ export default function Sidebar({ docs, loading, onUpload, onAddText, onRemove }
         </div>
         <div className={styles.footerRow}>
           <span>Retrieval</span>
-          <span className={styles.mono}>TF-IDF · cosine</span>
-        </div>
+          <span className={styles.mono}>
+            Semantic Search
+            </span>
+            </div>
       </div>
     </aside>
   )

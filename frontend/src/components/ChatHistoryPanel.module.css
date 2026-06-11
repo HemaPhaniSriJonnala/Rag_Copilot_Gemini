@@ -1,0 +1,143 @@
+/* ChatHistoryPanel.module.css
+   Place at: frontend/src/components/ChatHistoryPanel.module.css */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  width: 100%;
+}
+
+/* ── New Chat button ─────────────────────────────────────────────────────── */
+
+.newChatBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  margin-bottom: 8px;
+}
+
+.newChatBtn:hover  { opacity: 0.88; transform: translateY(-1px); }
+.newChatBtn:active { transform: translateY(0); }
+
+.plusIcon {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 300;
+}
+
+/* ── Section label ───────────────────────────────────────────────────────── */
+
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4a5568;
+  padding: 4px 6px 2px;
+}
+
+/* ── Hint / empty ────────────────────────────────────────────────────────── */
+
+.hint {
+  font-size: 12px;
+  color: #4a5568;
+  text-align: center;
+  padding: 12px 0;
+  margin: 0;
+}
+
+/* ── Session list ────────────────────────────────────────────────────────── */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 420px;
+}
+
+.item {
+  padding: 9px 10px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.item.active {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+/* preview text */
+.preview {
+  font-size: 13px;
+  color: #cbd5e0;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+/* meta row */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time {
+  font-size: 11px;
+  color: #4a5568;
+  flex: 1;
+}
+
+.msgCount {
+  font-size: 10px;
+  color: #4a5568;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+/* delete × button */
+.deleteBtn {
+  background: none;
+  border: none;
+  color: #4a5568;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.12s;
+  opacity: 0;
+}
+
+.item:hover .deleteBtn {
+  opacity: 1;
+}
+
+.deleteBtn:hover {
+  color: #fc8181;
+}

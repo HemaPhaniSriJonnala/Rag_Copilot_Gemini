@@ -10,3 +10,19 @@
   flex: 1;
   overflow: hidden;
 }
+
+/* Wraps Sidebar + ChatHistoryPanel in a single scrollable left column */
+.leftSidebar {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* Thin line between Knowledge Base and Recent Chats */
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 12px;
+  flex-shrink: 0;
+}
