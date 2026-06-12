@@ -5,7 +5,8 @@ python-multipart==0.0.9
 pydantic==2.8.2
 python-dotenv==1.0.1
 chromadb
-sentence-transformers
+sentence-transformers==2.7.0
+torch==2.2.2+cpu
 pypdf==4.2.0
 python-docx==1.1.2
 
