@@ -1,19 +1,20 @@
 """
-DocumentStore — unified in-memory storage for documents and chunks.
+DocumentStore — SQLite-backed storage for documents and chunks.
 
-Combines both versions:
-- Old: add_file(), add_text(), remove(), get_filename(), list_documents(), stats()
-- New: add_document(), remove_document(), get_chunks(), total_chunks()
-  + PDF and DOCX extraction built-in
+Persists across server restarts (Render free tier spin-downs, etc.).
+SQLite is part of Python stdlib — no extra install needed.
 
-Both old and new method names work, so main.py and chroma_retriever.py
-don't need any changes.
+API is identical to the old in-memory version so main.py needs no changes.
 """
 
 import uuid
+import sqlite3
+import os
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
+
+DB_PATH = os.getenv("DOCS_DB_PATH", "documents.db")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -24,11 +25,10 @@ from datetime import datetime
 class Chunk:
     id:          str
     doc_id:      str
-    doc_name:    str       # used by ChromaRetriever
-    chunk_index: int       # was .index in old version
+    doc_name:    str
+    chunk_index: int
     text:        str
 
-    # back-compat alias so old code using .index still works
     @property
     def index(self) -> int:
         return self.chunk_index
@@ -36,20 +36,18 @@ class Chunk:
 
 @dataclass
 class Document:
-    id:         str
-    name:       str        # canonical field
-    preview:    str        # first 200 chars
+    id:          str
+    name:        str
+    preview:     str
     chunk_count: int
-    created_at: str
+    created_at:  str
 
-    # back-compat aliases so old code using .filename still works
     @property
     def filename(self) -> str:
         return self.name
 
     @property
     def chunks(self) -> list:
-        # returns empty list by default; real chunks are in DocumentStore._chunks
         return []
 
 
@@ -89,8 +87,8 @@ def _extract(filename: str, content: bytes) -> str:
 # Chunker
 # ══════════════════════════════════════════════════════════════════════════════
 
-CHUNK_SIZE    = 400   # words per chunk
-CHUNK_OVERLAP = 80    # overlap between consecutive chunks
+CHUNK_SIZE    = 400
+CHUNK_OVERLAP = 80
 
 
 def _chunk_text(doc_id: str, doc_name: str, text: str) -> list[Chunk]:
@@ -113,20 +111,50 @@ def _chunk_text(doc_id: str, doc_name: str, text: str) -> list[Chunk]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DocumentStore
+# DocumentStore — SQLite-backed
 # ══════════════════════════════════════════════════════════════════════════════
 
 class DocumentStore:
     def __init__(self):
-        self._docs:   dict[str, Document] = {}
-        self._chunks: list[Chunk]         = []
+        self._db = DB_PATH
+        self._init_db()
+
+    def _conn(self):
+        conn = sqlite3.connect(self._db)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self):
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    preview     TEXT NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    created_at  TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS chunks (
+                    id          TEXT PRIMARY KEY,
+                    doc_id      TEXT NOT NULL,
+                    doc_name    TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    text        TEXT NOT NULL,
+                    FOREIGN KEY (doc_id) REFERENCES documents(id)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id)"
+            )
+            conn.commit()
 
     # ── internal ──────────────────────────────────────────────────────────────
 
     def _create(self, name: str, text: str) -> Document:
-        doc_id  = str(uuid.uuid4())
-        chunks  = _chunk_text(doc_id, name, text)
-        self._chunks.extend(chunks)
+        doc_id = str(uuid.uuid4())
+        chunks = _chunk_text(doc_id, name, text)
 
         doc = Document(
             id          = doc_id,
@@ -135,57 +163,99 @@ class DocumentStore:
             chunk_count = len(chunks),
             created_at  = datetime.utcnow().isoformat(),
         )
-        self._docs[doc_id] = doc
+
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO documents (id, name, preview, chunk_count, created_at) VALUES (?,?,?,?,?)",
+                (doc.id, doc.name, doc.preview, doc.chunk_count, doc.created_at),
+            )
+            conn.executemany(
+                "INSERT INTO chunks (id, doc_id, doc_name, chunk_index, text) VALUES (?,?,?,?,?)",
+                [(c.id, c.doc_id, c.doc_name, c.chunk_index, c.text) for c in chunks],
+            )
+            conn.commit()
+
         return doc
 
-    # ── add — NEW style (used by new main.py) ─────────────────────────────────
+    # ── add — new style ───────────────────────────────────────────────────────
 
     def add_document(self, name: str, content: str) -> Document:
-        """New-style add: accepts already-extracted text string."""
         return self._create(name, content)
 
-    # ── add — OLD style (used by old main.py / other services) ───────────────
+    # ── add — old style ───────────────────────────────────────────────────────
 
     def add_file(self, filename: str, content: bytes) -> Document:
-        """Old-style add: accepts raw bytes, extracts text internally."""
         text = _extract(filename, content)
         return self._create(filename, text)
 
     def add_text(self, title: str, text: str) -> Document:
-        """Old-style add: plain text with a title."""
         return self._create(title, text)
 
     # ── remove ────────────────────────────────────────────────────────────────
 
     def remove_document(self, doc_id: str) -> bool:
-        """New-style remove: returns True/False."""
-        if doc_id not in self._docs:
-            return False
-        del self._docs[doc_id]
-        self._chunks = [c for c in self._chunks if c.doc_id != doc_id]
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id FROM documents WHERE id=?", (doc_id,)
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
+            conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+            conn.commit()
         return True
 
     def remove(self, doc_id: str) -> None:
-        """Old-style remove: silent no-op if not found."""
         self.remove_document(doc_id)
 
     # ── query ─────────────────────────────────────────────────────────────────
 
     def list_documents(self) -> list[Document]:
-        return list(self._docs.values())
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, name, preview, chunk_count, created_at FROM documents ORDER BY created_at"
+            ).fetchall()
+        return [
+            Document(
+                id          = r["id"],
+                name        = r["name"],
+                preview     = r["preview"],
+                chunk_count = r["chunk_count"],
+                created_at  = r["created_at"],
+            )
+            for r in rows
+        ]
 
     def get_chunks(self) -> list[Chunk]:
-        """Used by ChromaRetriever.index_documents()."""
-        return self._chunks
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, doc_id, doc_name, chunk_index, text FROM chunks ORDER BY doc_id, chunk_index"
+            ).fetchall()
+        return [
+            Chunk(
+                id          = r["id"],
+                doc_id      = r["doc_id"],
+                doc_name    = r["doc_name"],
+                chunk_index = r["chunk_index"],
+                text        = r["text"],
+            )
+            for r in rows
+        ]
 
     def total_chunks(self) -> int:
-        return len(self._chunks)
+        with self._conn() as conn:
+            row = conn.execute("SELECT COUNT(*) as n FROM chunks").fetchone()
+        return row["n"]
 
     def get_filename(self, doc_id: str) -> str:
-        """Used by main.py to attach filenames to source citations."""
-        doc = self._docs.get(doc_id)
-        return doc.name if doc else "unknown"
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT name FROM documents WHERE id=?", (doc_id,)
+            ).fetchone()
+        return row["name"] if row else "unknown"
 
     def stats(self) -> dict:
-        """Old-style stats endpoint."""
-        return {"documents": len(self._docs), "chunks": len(self._chunks)}
+        with self._conn() as conn:
+            doc_count   = conn.execute("SELECT COUNT(*) as n FROM documents").fetchone()["n"]
+            chunk_count = conn.execute("SELECT COUNT(*) as n FROM chunks").fetchone()["n"]
+        return {"documents": doc_count, "chunks": chunk_count}

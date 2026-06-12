@@ -12,9 +12,10 @@ load_dotenv()
 from google import genai
 from google.genai import types
 
-from services.retriever import RetrievedChunk
+# Import from chroma_retriever (the active retriever), not the old TF-IDF one
+from services.chroma_retriever import RetrievedChunk
 
-MODEL = "gemini-2.5-flash"  # best free model as of June 2026
+MODEL = "gemini-2.5-flash"
 
 SYSTEM_BASE = """You are RAG Copilot, an AI assistant that answers questions \
 grounded in documents provided by the user.
@@ -85,21 +86,16 @@ class LLMService:
         yield f"data: {json.dumps({'type': 'sources', 'sources': sources_payload})}\n\n"
 
         # Build conversation history in Gemini's Content format
-        # Gemini roles: "user" | "model"
-                # Build conversation history in Gemini's Content format
+        # history items are dicts with keys: role, content, ts
         contents: list[types.Content] = []
 
         for m in history[-10:]:
-            role = "model" if m.role == "assistant" else "user"
-
+            # m is a dict (from SQLite) — use m["role"], not m.role
+            role = "model" if m["role"] == "assistant" else "user"
             contents.append(
                 types.Content(
                     role=role,
-                    parts=[
-                        types.Part.from_text(
-                            text=m.content
-                        )
-                    ]
+                    parts=[types.Part.from_text(text=m["content"])],
                 )
             )
 
@@ -107,11 +103,10 @@ class LLMService:
         contents.append(
             types.Content(
                 role="user",
-                parts=[
-                    types.Part.from_text(text=query)
-                ]
+                parts=[types.Part.from_text(text=query)],
             )
         )
+
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
             temperature=0.7,
@@ -124,9 +119,9 @@ class LLMService:
                 model=MODEL,
                 contents=contents,
                 config=config,
-                ):
+            ):
                 if chunk.text:
                     yield f"data: {json.dumps({'type': 'token', 'text': chunk.text})}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'token', 'text': f'Error: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'text': f'Error: {str(e)}'})} \n\n"

@@ -6,10 +6,11 @@ Drops torch entirely, keeping the install tiny enough to deploy on Render free t
 import os
 import chromadb
 from google import genai
+from google.genai import types
 from dataclasses import dataclass
 from services.document_store import DocumentStore
 
-EMBEDDING_MODEL = "models/text-embedding-004"
+EMBEDDING_MODEL = "text-embedding-004"   # no "models/" prefix for this SDK version
 
 
 def _embed(texts: list[str]) -> list[list[float]]:
@@ -35,7 +36,7 @@ class ChromaRetriever:
     def __init__(self, store: DocumentStore):
         self.store = store
 
-        # Use in-memory client — no disk persistence needed on Render
+        # In-memory client — no disk needed on Render
         self.client = chromadb.Client()
 
         self.collection = self.client.get_or_create_collection(
@@ -43,10 +44,12 @@ class ChromaRetriever:
             metadata={"hnsw:space": "cosine"},
         )
 
+        # Re-index any docs already in the store (survives restarts via SQLite)
+        self.index_documents()
+
     def index_documents(self):
         chunks = self.store.get_chunks()
 
-        # Clear and recreate collection
         try:
             self.client.delete_collection("documents")
         except Exception:
